@@ -1,0 +1,8 @@
+# Connect MongoDB
+pymongo==4.6.1
+# Read CSV and verify data integrity
+pandas==2.2.0
+# Read .env file
+python-dotenv==1.0.1
+#Tests automatisation
+pytest==8.0.0
