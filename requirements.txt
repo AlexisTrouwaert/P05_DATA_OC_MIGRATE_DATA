@@ -6,3 +6,6 @@ pandas==2.2.0
 python-dotenv==1.0.1
 #Tests automatisation
 pytest==8.0.0
+pytest-cov==5.0.0
+# In-memory MongoDB simulation for integration tests (no real DB required)
+mongomock==4.3.0

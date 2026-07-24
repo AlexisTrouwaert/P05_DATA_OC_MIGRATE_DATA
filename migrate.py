@@ -71,7 +71,8 @@ def clean_and_prepare_data(csv_path):
         if pd.notnull(record['Date of Admission']):
             record['Date of Admission'] = record['Date of Admission'].to_pydatetime()
 
-    print(records[0])
+    if records:
+        print(records[0])
 
     return records
 

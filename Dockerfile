@@ -6,5 +6,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY migrate.py .
+COPY tests/ tests/
 
 CMD ["python", "migrate.py"]

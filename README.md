@@ -93,6 +93,26 @@ The `migrate.py` script connects to the MongoDB instance using the `app_user` cr
 * **Collection structure :** a single collection, `admissions`, inside the `medical_data` database — full field list and types in the [Database Schema](#database-schema) section.
 * **Indexes :** `Medical Condition`, `Hospital`, and `Date of Admission` were chosen because they are the fields most likely to be filtered or sorted on when analyzing the data (e.g. by the read-only `analyst_user`), keeping those queries fast as the collection grows.
 
+## 6. Tests (`tests/`)
+
+The project has an automated test suite built with `pytest` :
+
+* **`tests/test_migrate.py`** : unit tests for `clean_and_prepare_data()` and `migrate_data()` (cleaning rules, case normalization, deduplication, type casting, default dates, edge cases such as missing columns or an empty CSV) and for `get_db_connection()` (connection URI). MongoDB calls are mocked, so no database is needed.
+* **`tests/test_migrate_integration.py`** : an integration test running the full `migrate_data()` pipeline against [`mongomock`](https://github.com/mongomock/mongomock), an in-memory MongoDB simulator — it checks the documents actually inserted, the indexes created, and that re-running the script is idempotent.
+
+**Run the tests locally** (after installing `requirements.txt`, see section 1) :
+```bash
+pytest tests/ --cov=migrate --cov-report=term-missing
+```
+
+**Run the tests inside Docker**, without installing anything on your machine :
+```bash
+docker compose build migration
+docker compose run --rm migration python -m pytest tests/ -v
+```
+
+**Continuous Integration :** a GitHub Actions workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the full test suite on every push and pull request, and fails the build if code coverage drops below **80%** (currently ~98%).
+
 <a id="version-francaise"></a>
 # Version Française
 
@@ -187,6 +207,26 @@ Le script `migrate.py` se connecte à MongoDB avec les identifiants de `app_user
 * **Pourquoi MongoDB :** le jeu de données est un ensemble de dossiers patients hétérogène mais plat (types mixtes, certains champs optionnels) qui ne nécessite pas de relations multi-tables — un document par admission est un choix naturel, et le schéma flexible de MongoDB évite de devoir figer une structure relationnelle rigide pour un projet ETL ponctuel.
 * **Structure de la collection :** une seule collection, `admissions`, dans la base `medical_data` — liste complète des champs et types dans la section [Schéma de la base de données](#database-schema).
 * **Index :** `Medical Condition`, `Hospital` et `Date of Admission` ont été choisis car ce sont les champs les plus susceptibles d'être filtrés ou triés lors de l'analyse des données (par exemple par le compte en lecture seule `analyst_user`), afin de garder ces requêtes rapides à mesure que la collection grossit.
+
+## 6. Tests (`tests/`)
+
+Le projet dispose d'une suite de tests automatisés construite avec `pytest` :
+
+* **`tests/test_migrate.py`** : tests unitaires pour `clean_and_prepare_data()` et `migrate_data()` (règles de nettoyage, normalisation de casse, déduplication, typage, dates par défaut, cas limites comme une colonne manquante ou un CSV vide) et pour `get_db_connection()` (URI de connexion). Les appels à MongoDB sont mockés, aucune base de données n'est nécessaire.
+* **`tests/test_migrate_integration.py`** : un test d'intégration qui exécute le pipeline complet de `migrate_data()` contre [`mongomock`](https://github.com/mongomock/mongomock), un simulateur MongoDB en mémoire — il vérifie les documents réellement insérés, les index créés, et que relancer le script est bien idempotent.
+
+**Lancer les tests en local** (après avoir installé `requirements.txt`, voir section 1) :
+```bash
+pytest tests/ --cov=migrate --cov-report=term-missing
+```
+
+**Lancer les tests dans Docker**, sans rien installer sur votre machine :
+```bash
+docker compose build migration
+docker compose run --rm migration python -m pytest tests/ -v
+```
+
+**Intégration continue :** un workflow GitHub Actions ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) lance la suite de tests complète à chaque push et pull request, et fait échouer le build si la couverture de code descend sous **80%** (actuellement ~98%).
 
 ---
 
