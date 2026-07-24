@@ -9,12 +9,12 @@ load_dotenv()
 
 def get_db_connection():
     """Database connection"""
-    username = os.getenv("MONGO_ROOT_USERNAME")
-    password = os.getenv("MONGO_ROOT_PASSWORD")
+    username = os.getenv("MONGO_APP_USERNAME")
+    password = os.getenv("MONGO_APP_PASSWORD")
     host = os.getenv("MONGO_HOST", "localhost")
 
     # Connection string
-    uri = f"mongodb://{username}:{password}@{host}:27017/?authSource=admin"
+    uri = f"mongodb://{username}:{password}@{host}:27017/?authSource=medical_data"
     client = MongoClient(uri)
     return client["medical_data"]
 
