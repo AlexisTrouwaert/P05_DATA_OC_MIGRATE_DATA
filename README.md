@@ -42,7 +42,7 @@ The `docker-compose.yml` file defines and configures **two services** on a share
 
 | User | Role | Purpose |
 |---|---|---|
-| `app_user` | `readWrite` on `medical_data` | Used by the `migration` service to insert and update the data. This is the account `migrate.py` actually connects with (see section 4). |
+| `app_user` | `readWrite` on `medical_data` | Used by the `migration` service to insert and update the data. This is the account `migrate.py` actually connects with (see section 5). |
 | `analyst_user` | `read` on `medical_data` | Intended for a person consulting/analyzing the data (e.g. building reports or dashboards) : read-only, no risk of accidentally altering or deleting production data. |
 
 Separating these roles from the root account limits the damage a compromised or misused credential can do : the ETL script can never accidentally drop the database, and an analyst can never write to it. The `migration` service connects using the Docker service name `mongodb` as the host (via the `MONGO_HOST` environment variable, injected by `docker-compose.yml`) instead of `localhost`, since both containers communicate over the internal `p05_network`.
@@ -70,18 +70,28 @@ docker compose stop
 
 The `admissions` collection schema (fields, types, indexes) is documented at the end of this document, in a dedicated bilingual section : [🗂️ Jump to Database Schema](#database-schema).
 
-## 5. Migration Script Description (`migrate.py`)
+## 5. Data Process : Collection, Processing & Storage
 
-The `migrate.py` script performs the core ETL operations:
+**Collection**
+* **Source :** public dataset from Kaggle ("Healthcare Dataset"), downloaded as a single CSV file.
+* **Format :** CSV, comma-separated, one row per hospital admission record, 15 columns (see schema in section 4).
+* **Frequency :** one-shot / manual load. This project performs a single batch import for the demonstration — there is no scheduled or recurring ingestion. To load an updated dataset, replace `data/healthcare_dataset.csv` and re-run `docker compose run migration python migrate.py` (see section 3).
 
-* **Extract :** It reads the raw `healthcare_dataset.csv` using the Pandas library.
-* **Transform :**
-  * **Missing Values & Whitespace :** Fills empty text fields with "Inconnu" and strips trailing/leading spaces.
-  * **Case Normalization :** Applies Title Case to names, hospitals, and doctors; Capitalize for medical conditions and gender; Uppercase for blood types.
-  * **Deduplication :** Removes duplicate rows after text normalization.
-  * **Type Casting :** Strictly converts Ages to Integers, Billing Amounts to Floats, and string dates to native Python `datetime` objects (handling invalid dates smoothly).
-* **Load :** Connects to the MongoDB instance using the `app_user` credentials (`readWrite` role, see section 3), clears the existing `admissions` collection to prevent duplication on multiple runs, and performs a bulk insert of all cleaned documents.
-* **Indexing :** Creates performance indexes on `Medical Condition`, `Hospital`, and `Date of Admission` to speed up future database queries.
+**Processing**
+The `migrate.py` script connects to the MongoDB instance using the `app_user` credentials (`readWrite` role, see section 3) and runs the following pipeline :
+1. **Extract** : reads the raw `healthcare_dataset.csv` using the Pandas library.
+2. **Clean** : fills empty text fields with "Inconnu", strips leading/trailing whitespace, and normalizes case (Title Case for names, hospitals, and doctors; Capitalize for medical conditions and gender; Uppercase for blood types).
+3. **Deduplicate** : removes duplicate rows after text normalization.
+4. **Type cast** : strictly converts ages to integers, billing amounts to floats, and string dates to native Python `datetime` objects (handling invalid dates smoothly).
+5. **Load** : clears the existing `admissions` collection, then performs a bulk insert of all cleaned documents.
+6. **Index** : creates indexes on `Medical Condition`, `Hospital`, and `Date of Admission` to speed up future queries.
+
+> **Design notes :** the collection is cleared (`delete_many({})`) before each insert so the script is **idempotent** — it can be re-run safely (e.g. after updating the CSV) without producing duplicate admissions. Invalid or missing admission dates are replaced with a fixed default date rather than dropped, so no patient record is lost due to a single bad field.
+
+**Storage**
+* **Why MongoDB :** the dataset is a flat but heterogeneous set of patient records (mixed types, some optional fields) that doesn't need multi-table relations — a single document per admission is a natural fit, and MongoDB's flexible schema avoids defining a rigid relational structure upfront for a one-off ETL project.
+* **Collection structure :** a single collection, `admissions`, inside the `medical_data` database — full field list and types in the [Database Schema](#database-schema) section.
+* **Indexes :** `Medical Condition`, `Hospital`, and `Date of Admission` were chosen because they are the fields most likely to be filtered or sorted on when analyzing the data (e.g. by the read-only `analyst_user`), keeping those queries fast as the collection grows.
 
 <a id="version-francaise"></a>
 # Version Française
@@ -127,7 +137,7 @@ Le fichier `docker-compose.yml` définit et configure **deux services** reliés 
 
 | Utilisateur | Rôle | Usage |
 |---|---|---|
-| `app_user` | `readWrite` sur `medical_data` | Utilisé par le service `migration` pour insérer et mettre à jour les données. C'est ce compte que `migrate.py` utilise réellement pour se connecter (voir section 4). |
+| `app_user` | `readWrite` sur `medical_data` | Utilisé par le service `migration` pour insérer et mettre à jour les données. C'est ce compte que `migrate.py` utilise réellement pour se connecter (voir section 5). |
 | `analyst_user` | `read` sur `medical_data` | Destiné à une personne qui consulte/analyse les données (par exemple pour construire des rapports ou des tableaux de bord) : lecture seule, sans risque de modifier ou supprimer accidentellement des données de production. |
 
 Séparer ces rôles du compte root limite les dégâts possibles en cas d'identifiant compromis ou mal utilisé : le script ETL ne peut jamais supprimer la base par erreur, et un analyste ne peut jamais y écrire. Le service `migration` se connecte en utilisant le nom du service Docker `mongodb` comme hôte (via la variable d'environnement `MONGO_HOST`, injectée par `docker-compose.yml`) plutôt que `localhost`, car les deux conteneurs communiquent via le réseau interne `p05_network`.
@@ -155,18 +165,28 @@ docker compose stop
 
 Le schéma de la collection `admissions` (champs, types, index) est documenté à la fin de ce document, dans une section bilingue dédiée : [🗂️ Aller au schéma de la base de données](#database-schema).
 
-## 5. Description et fonctionnement du script (`migrate.py`)
+## 5. Processus de collecte, traitement et stockage des données
 
-Le script `migrate.py` est le cœur du projet et exécute les opérations suivantes :
+**Collecte**
+* **Source :** dataset public issu de Kaggle ("Healthcare Dataset"), téléchargé sous forme d'un unique fichier CSV.
+* **Format :** CSV, séparé par des virgules, une ligne par admission hospitalière, 15 colonnes (voir le schéma en section 4).
+* **Fréquence :** chargement ponctuel (one-shot) / manuel. Ce projet réalise un import unique en batch pour la démonstration — aucune ingestion planifiée ou récurrente n'est prévue. Pour charger un jeu de données mis à jour, il suffit de remplacer `data/healthcare_dataset.csv` puis de relancer `docker compose run migration python migrate.py` (voir section 3).
 
-* **Extraction :** Il lit le fichier source `healthcare_dataset.csv` en utilisant la bibliothèque Pandas.
-* **Transformation :**
-  * **Valeurs manquantes et espaces :** Remplit les champs textuels vides par la valeur "Inconnu" et supprime les espaces superflus.
-  * **Normalisation de la casse :** Met une majuscule à chaque mot pour les noms propres et les hôpitaux ; une seule majuscule initiale pour les pathologies ; et met tout en majuscule pour les groupes sanguins.
-  * **Déduplication :** Supprime les lignes en double après avoir harmonisé le texte.
-  * **Typage strict :** Convertit les âges en nombres entiers, les montants facturés en nombres à virgule, et les dates textuelles en objets dates natifs pour permettre des tris chronologiques.
-* **Chargement :** Se connecte à MongoDB avec les identifiants de `app_user` (rôle `readWrite`, voir section 3), vide la collection existante pour éviter de multiplier les doublons si le script est relancé, et insère l'intégralité des documents nettoyés en une seule opération.
-* **Indexation :** Crée des index de performance sur les champs liés aux pathologies, aux hôpitaux et aux dates d'admission pour accélérer considérablement les futures recherches dans la base de données.
+**Traitement**
+Le script `migrate.py` se connecte à MongoDB avec les identifiants de `app_user` (rôle `readWrite`, voir section 3) et exécute le pipeline suivant :
+1. **Extraction** : lit le fichier source `healthcare_dataset.csv` en utilisant la bibliothèque Pandas.
+2. **Nettoyage** : remplit les champs textuels vides par la valeur "Inconnu", supprime les espaces superflus, et normalise la casse (majuscule à chaque mot pour les noms propres, hôpitaux et médecins ; une seule majuscule initiale pour les pathologies et le genre ; tout en majuscule pour les groupes sanguins).
+3. **Déduplication** : supprime les lignes en double après avoir harmonisé le texte.
+4. **Typage** : convertit strictement les âges en nombres entiers, les montants facturés en nombres à virgule, et les dates textuelles en objets dates natifs.
+5. **Chargement** : vide la collection `admissions` existante, puis insère l'intégralité des documents nettoyés en une seule opération.
+6. **Indexation** : crée des index sur `Medical Condition`, `Hospital` et `Date of Admission` pour accélérer les futures recherches.
+
+> **Choix de conception :** la collection est vidée (`delete_many({})`) avant chaque insertion pour rendre le script **idempotent** — il peut être relancé sans risque (par exemple après une mise à jour du CSV) sans créer de doublons. Les dates d'admission invalides ou manquantes sont remplacées par une date par défaut plutôt que supprimées, afin de ne perdre aucun dossier patient à cause d'un seul champ défaillant.
+
+**Stockage**
+* **Pourquoi MongoDB :** le jeu de données est un ensemble de dossiers patients hétérogène mais plat (types mixtes, certains champs optionnels) qui ne nécessite pas de relations multi-tables — un document par admission est un choix naturel, et le schéma flexible de MongoDB évite de devoir figer une structure relationnelle rigide pour un projet ETL ponctuel.
+* **Structure de la collection :** une seule collection, `admissions`, dans la base `medical_data` — liste complète des champs et types dans la section [Schéma de la base de données](#database-schema).
+* **Index :** `Medical Condition`, `Hospital` et `Date of Admission` ont été choisis car ce sont les champs les plus susceptibles d'être filtrés ou triés lors de l'analyse des données (par exemple par le compte en lecture seule `analyst_user`), afin de garder ces requêtes rapides à mesure que la collection grossit.
 
 ---
 
