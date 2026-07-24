@@ -9,16 +9,16 @@ This project is an automated ETL (Extract, Transform, Load) pipeline. It extract
 ---
 
 ## 1. Python Dependencies (`requirements.txt`)
-The `requirements.txt` file is used to list all the external Python libraries required for this script to run (such as `pandas`, `pymongo`, and `python-dotenv`). It ensures that any developer working on the project has the exact same environment.
+The `requirements.txt` file lists all the external Python libraries required for this script to run (`pandas`, `pymongo`, `python-dotenv`, `pytest`). When you use Docker (recommended, see section 3), these dependencies are installed **automatically** during the image build — you don't need to install anything manually.
 
-**How to execute it :**
-First, it is highly recommended to create and activate a virtual environment. Then, install the dependencies by running the following command in your terminal :
+**Manual installation (only if you want to run `migrate.py` outside Docker) :**
+First, create and activate a virtual environment. Then, install the dependencies by running the following command in your terminal :
 ```bash
 pip install -r requirements.txt
 ```
 
 ## 2. Environment Variables (`.env`)
-The `.env` file is used to securely store sensitive credentials outside of the source code. You must create a `.env` file in the root directory before launching the database or the script.
+The `.env` file is used to securely store sensitive credentials outside of the source code. You must create a `.env` file in the project root before launching the stack.
 
 **Structure :**
 
@@ -27,17 +27,28 @@ The `.env` file is used to securely store sensitive credentials outside of the s
 
 > **Note: Never push your actual `.env` file to version control. It should be added to your `.gitignore`).**
 
-## 3. Database Infrastructure (`docker-compose.yml`)
+## 3. Docker Infrastructure (`docker-compose.yml`)
 
-The `docker-compose.yml` file defines and configures the MongoDB database service. It sets up the container, maps the local port `27017` to the container, reads the `.env` file to create the root user, and establishes a persistent volume so that data is not lost when the container stops.
+The `docker-compose.yml` file defines and configures **two services** on a shared Docker network (`p05_network`):
 
-**How to launch the database :**  
+* **`mongodb`** : the database. It maps the local port `27017` to the container, reads the `.env` file to create the root user (`MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD`), and stores its data in the persistent volume `mongodb_data` so nothing is lost when the container stops.
+* **`migration`** : built from the local `Dockerfile` (installs `requirements.txt` at build time). It mounts the `data/` folder (containing `healthcare_dataset.csv`) as a volume, waits for `mongodb` to be ready (`depends_on`), and runs `migrate.py` on startup.
+
+**Authentication :** the `migration` service connects to MongoDB using the same root credentials from `.env`, with `authSource=admin`. The container reaches the database using the Docker service name `mongodb` as the host (via the `MONGO_HOST` environment variable, injected by `docker-compose.yml`) instead of `localhost`, since both containers communicate over the internal `p05_network`.
+
+**How to launch the whole stack (database + migration) :**  
 Open your terminal in the project folder and run :
 ```bash
-docker compose up -d
+docker compose up --build
+```
+This single command builds the `migration` image, starts MongoDB, and executes the ETL script automatically.
+
+**To (re-)run only the migration script**, for example after modifying the CSV :
+```bash
+docker compose run migration python migrate.py
 ```
 
-To stop the database, use : 
+To stop the stack, use : 
 ```bash
 docker compose stop
 ```
@@ -66,16 +77,16 @@ Ce projet est un pipeline automatisé d'extraction, de transformation et de char
 ---
 
 ## 1. Dépendances Python (`requirements.txt`)
-Le fichier `requirements.txt` sert à lister toutes les bibliothèques Python externes nécessaires au bon fonctionnement de ce script. Il garantit que tout développeur reprenant le projet travaillera dans un environnement identique.
+Le fichier `requirements.txt` liste toutes les bibliothèques Python externes nécessaires au bon fonctionnement de ce script (`pandas`, `pymongo`, `python-dotenv`, `pytest`). Avec Docker (recommandé, voir section 3), ces dépendances sont installées **automatiquement** lors du build de l'image : aucune installation manuelle n'est nécessaire.
 
-**Comment l'exécuter :**
+**Installation manuelle (uniquement si vous voulez exécuter `migrate.py` hors Docker) :**
 Il est recommandé de créer et d'activer d'abord un environnement virtuel. Ensuite, installez les dépendances en exécutant la commande suivante dans votre terminal :
 ```bash
 pip install -r requirements.txt
 ```
 
 ## 2. Variables d'environnement (`.env`)
-Le fichier `.env` permet de stocker vos identifiants sensibles de manière sécurisée, en dehors du code source. Vous devez créer un fichier `.env` à la racine du projet avant de lancer la base de données ou le script.
+Le fichier `.env` permet de stocker vos identifiants sensibles de manière sécurisée, en dehors du code source. Vous devez créer un fichier `.env` à la racine du projet avant de lancer la stack.
 
 **Structure :**
 
@@ -84,17 +95,28 @@ Le fichier `.env` permet de stocker vos identifiants sensibles de manière sécu
 
 > **Note : Ne publiez jamais votre véritable fichier `.env` sur un gestionnaire de version comme Git. Il doit être ignoré via le fichier `.gitignore`.**
 
-## 3. Infrastructure de la base de données (`docker-compose.yml`)
+## 3. Infrastructure Docker (`docker-compose.yml`)
 
-Le fichier `docker-compose.yml` définit et configure le service de base de données MongoDB. Il paramètre le conteneur, redirige le port `27017` vers votre machine, lit le fichier .env pour créer l'utilisateur administrateur, et met en place un volume persistant pour que les données ne soient pas perdues à l'arrêt du conteneur.
+Le fichier `docker-compose.yml` définit et configure **deux services** reliés par un réseau Docker partagé (`p05_network`) :
 
-**Comment lancer la base de données :**  
+* **`mongodb`** : la base de données. Il redirige le port `27017` vers votre machine, lit le fichier `.env` pour créer l'utilisateur administrateur (`MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD`), et stocke ses données dans le volume persistant `mongodb_data` pour qu'elles ne soient pas perdues à l'arrêt du conteneur.
+* **`migration`** : construit à partir du `Dockerfile` local (installe `requirements.txt` au moment du build). Il monte le dossier `data/` (contenant `healthcare_dataset.csv`) en volume, attend que `mongodb` soit prêt (`depends_on`), puis exécute `migrate.py` au démarrage.
+
+**Authentification :** le service `migration` se connecte à MongoDB avec les mêmes identifiants administrateur définis dans `.env`, via `authSource=admin`. Le conteneur joint la base de données en utilisant le nom du service Docker `mongodb` comme hôte (via la variable d'environnement `MONGO_HOST`, injectée par `docker-compose.yml`) plutôt que `localhost`, car les deux conteneurs communiquent via le réseau interne `p05_network`.
+
+**Comment lancer toute la stack (base de données + migration) :**  
 Ouvrez votre terminal dans le dossier du projet et exécutez :
 ```bash
-docker compose up -d
+docker compose up --build
+```
+Cette commande unique construit l'image `migration`, démarre MongoDB, puis exécute automatiquement le script ETL.
+
+**Pour ré-exécuter uniquement le script de migration**, par exemple après avoir modifié le CSV :
+```bash
+docker compose run migration python migrate.py
 ```
 
-Pour arrêter la base de données, utilisez la commande
+Pour arrêter la stack, utilisez la commande
 ```bash
 docker compose stop
 ```
