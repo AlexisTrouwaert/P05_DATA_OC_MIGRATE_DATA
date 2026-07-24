@@ -66,7 +66,11 @@ To stop the stack, use :
 docker compose stop
 ```
 
-## 4. Migration Script Description (`migrate.py`)
+## 4. Database Schema
+
+The `admissions` collection schema (fields, types, indexes) is documented at the end of this document, in a dedicated bilingual section : [🗂️ Jump to Database Schema](#database-schema).
+
+## 5. Migration Script Description (`migrate.py`)
 
 The `migrate.py` script performs the core ETL operations:
 
@@ -147,7 +151,11 @@ Pour arrêter la stack, utilisez la commande
 docker compose stop
 ```
 
-## 4. Description et fonctionnement du script (`migrate.py`)
+## 4. Schéma de la base de données
+
+Le schéma de la collection `admissions` (champs, types, index) est documenté à la fin de ce document, dans une section bilingue dédiée : [🗂️ Aller au schéma de la base de données](#database-schema).
+
+## 5. Description et fonctionnement du script (`migrate.py`)
 
 Le script `migrate.py` est le cœur du projet et exécute les opérations suivantes :
 
@@ -159,3 +167,55 @@ Le script `migrate.py` est le cœur du projet et exécute les opérations suivan
   * **Typage strict :** Convertit les âges en nombres entiers, les montants facturés en nombres à virgule, et les dates textuelles en objets dates natifs pour permettre des tris chronologiques.
 * **Chargement :** Se connecte à MongoDB avec les identifiants de `app_user` (rôle `readWrite`, voir section 3), vide la collection existante pour éviter de multiplier les doublons si le script est relancé, et insère l'intégralité des documents nettoyés en une seule opération.
 * **Indexation :** Crée des index de performance sur les champs liés aux pathologies, aux hôpitaux et aux dates d'admission pour accélérer considérablement les futures recherches dans la base de données.
+
+---
+
+<a id="database-schema"></a>
+## Database Schema / Schéma de la base de données
+
+*Back to: [🇬🇧 English Version](#english-version) | Retour vers : [🇫🇷 Version Française](#version-française)*
+
+Database: `medical_data` — Collection: `admissions`
+
+| Field | Type | Indexed |
+|---|---|---|
+| `Name` | string | |
+| `Age` | int | |
+| `Gender` | string | |
+| `Blood Type` | string | |
+| `Medical Condition` | string | ✅ |
+| `Date of Admission` | datetime | ✅ |
+| `Doctor` | string | |
+| `Hospital` | string | ✅ |
+| `Insurance Provider` | string | |
+| `Billing Amount` | float | |
+| `Room Number` | int | |
+| `Admission Type` | string | |
+| `Discharge Date` | string | |
+| `Medication` | string | |
+| `Test Results` | string | |
+
+```mermaid
+erDiagram
+    ADMISSIONS {
+        string Name
+        int Age
+        string Gender
+        string Blood_Type
+        string Medical_Condition "indexed"
+        datetime Date_of_Admission "indexed"
+        string Doctor
+        string Hospital "indexed"
+        string Insurance_Provider
+        float Billing_Amount
+        int Room_Number
+        string Admission_Type
+        string Discharge_Date
+        string Medication
+        string Test_Results
+    }
+```
+
+> Preview/edit this diagram on [mermaid.live](https://mermaid.live/) — paste the code block above.
+
+Indexes on `admissions` : `Medical Condition`, `Hospital`, `Date of Admission` (see [migrate.py](migrate.py) — `create_index` calls in `migrate_data()`).
